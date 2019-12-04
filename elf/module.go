@@ -124,6 +124,11 @@ int bpf_attach_xdp(const char *dev_name, int progfd, uint32_t flags)
 */
 import "C"
 
+const (
+	kprobeType = "p"
+	kretprobeType = "r"
+)
+
 type Module struct {
 	fileName   string
 	fileReader io.ReaderAt
@@ -146,6 +151,7 @@ type Module struct {
 // in the C file,
 type Kprobe struct {
 	Name  string
+	FnName string
 	insns *C.struct_bpf_insn
 	fd    int
 	efd   int
@@ -153,6 +159,7 @@ type Kprobe struct {
 
 type Uprobe struct {
 	Name  string
+	FnName string
 	insns *C.struct_bpf_insn
 	fd    int
 	efds  map[string]int
@@ -330,23 +337,76 @@ func (b *Module) EnableKprobe(secName string, maxactive int) error {
 		return fmt.Errorf("no such kprobe %q", secName)
 	}
 	progFd := probe.fd
+	funcName = probe.FnName
+
 	var maxactiveStr string
 	if isKretprobe {
-		probeType = "r"
-		funcName = strings.TrimPrefix(secName, "kretprobe/")
+		probeType = kretprobeType
+		if funcName == "" {
+			funcName = strings.TrimPrefix(secName, "kretprobe/")
+		}
 		if maxactive > 0 {
 			maxactiveStr = fmt.Sprintf("%d", maxactive)
 		}
 	} else {
-		probeType = "p"
-		funcName = strings.TrimPrefix(secName, "kprobe/")
+		probeType = kprobeType
+		if funcName == "" {
+			funcName = strings.TrimPrefix(secName, "kprobe/")
+		}
 	}
-	eventName := probeType + funcName
+	eventName := probeType + probe.Name
+
+	fmt.Println("????")
+	fmt.Println(eventName)
+	fmt.Println(funcName)
 
 	kprobeId, err := writeKprobeEvent(probeType, eventName, funcName, maxactiveStr)
 	// fallback without maxactive
 	if err == kprobeIDNotExist {
 		kprobeId, err = writeKprobeEvent(probeType, eventName, funcName, "")
+	}
+	if err != nil {
+		return err
+	}
+
+	probe.efd, err = perfEventOpenTracepoint(kprobeId, progFd)
+	return err
+}
+
+func (b *Module) AttachKprobe(secName, funcName string) error {
+	probe, ok := b.probes[secName]
+	if !ok {
+		return fmt.Errorf("no such kprobe %q", secName)
+	}
+	progFd := probe.fd
+	eventName := kprobeType + funcName
+
+	kprobeId, err := writeKprobeEvent(kprobeType, eventName, funcName, "")
+	if err != nil {
+		return err
+	}
+
+	probe.efd, err = perfEventOpenTracepoint(kprobeId, progFd)
+	return err
+}
+
+func (b *Module) AttachKretprobe(secName, funcName string, maxActive int) error {
+	probe, ok := b.probes[secName]
+	if !ok {
+		return fmt.Errorf("no such kprobe %q", secName)
+	}
+	progFd := probe.fd
+	eventName := kretprobeType + funcName
+
+
+	var maxActiveStr string
+	if maxActive > 0 {
+		maxActiveStr = strconv.Itoa(maxActive)
+	}
+	kprobeId, err := writeKprobeEvent(kretprobeType, eventName, funcName, maxActiveStr)
+	// fallback without maxactive
+	if err == kprobeIDNotExist && maxActive > 0 {
+		kprobeId, err = writeKprobeEvent("r", eventName, funcName, "")
 	}
 	if err != nil {
 		return err

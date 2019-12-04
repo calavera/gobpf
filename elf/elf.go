@@ -490,6 +490,7 @@ type SectionParams struct {
 // Load loads the BPF programs and BPF maps in the module. Each ELF section
 // can optionally have parameters that changes how it is configured.
 func (b *Module) Load(parameters map[string]SectionParams) error {
+	fmt.Println("WTF!!!!!")
 	if b.fileName != "" {
 		fileReader, err := os.Open(b.fileName)
 		if err != nil {
@@ -552,6 +553,16 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 			processed[section.Info] = true
 
 			secName := rsection.Name
+			var fnName string
+
+			split := strings.SplitN(secName, "@", 2)
+			if len(split) == 2 {
+				secName = split[0]
+				fnName = split[1]
+			}
+
+			fmt.Println(secName)
+			fmt.Println(fnName)
 
 			isKprobe := strings.HasPrefix(secName, "kprobe/")
 			isKretprobe := strings.HasPrefix(secName, "kretprobe/")
@@ -636,6 +647,7 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 				case isKretprobe:
 					b.probes[secName] = &Kprobe{
 						Name:  secName,
+						FnName: fnName,
 						insns: insns,
 						fd:    int(progFd),
 						efd:   -1,
@@ -645,6 +657,7 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 				case isUretprobe:
 					b.uprobes[secName] = &Uprobe{
 						Name:  secName,
+						FnName: fnName,
 						insns: insns,
 						fd:    int(progFd),
 						efds:  make(map[string]int),
@@ -694,6 +707,16 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 		}
 
 		secName := section.Name
+		var fnName string
+
+		split := strings.SplitN(secName, "@", 2)
+		if len(split) == 2 {
+			secName = split[0]
+			fnName = split[1]
+		}
+
+		fmt.Println(secName)
+		fmt.Println(fnName)
 
 		isKprobe := strings.HasPrefix(secName, "kprobe/")
 		isKretprobe := strings.HasPrefix(secName, "kretprobe/")
@@ -772,6 +795,7 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 			case isKretprobe:
 				b.probes[secName] = &Kprobe{
 					Name:  secName,
+					FnName: fnName,
 					insns: insns,
 					fd:    int(progFd),
 					efd:   -1,
@@ -781,6 +805,7 @@ func (b *Module) Load(parameters map[string]SectionParams) error {
 			case isUretprobe:
 				b.uprobes[secName] = &Uprobe{
 					Name:  secName,
+					FnName: fnName,
 					insns: insns,
 					fd:    int(progFd),
 					efds:  make(map[string]int),
